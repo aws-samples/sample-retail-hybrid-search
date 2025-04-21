@@ -1,0 +1,75 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Creates an OpenSearch domain and an IAM role for OpenSearch Service to invoke Amazon Titan Multimodal Embeddings G1 model in Amazon Bedrock.]
+
+Parameters:
+
+  OSSAccessBedrockRoleName:
+    Type: String
+    Default: opensearch-access-to-bedrock-role
+    Description: This role allows OpenSearch Service to access Amazon Bedrock.
+
+  OpenSearchDomainName:
+    Type: String
+    Default: hybrid-search-domain
+    Description: This is the name of the OpenSearch domain to be created.
+
+  NotebookIdentityARN:
+    Type: String
+    Description: (REQUIRED) This is the execution role or user used by the Amazon OpenSearch Service domain client.
+
+Resources:
+
+  # IAM Role for OpenSearch Service to access Amazon Bedrock
+  OSSAccessBedrockRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Ref OSSAccessBedrockRoleName
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: 'opensearchservice.amazonaws.com'
+            Action: 'sts:AssumeRole'
+      Policies:
+          - PolicyName: Allow-InvokeModel
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action: 'bedrock:InvokeModel'
+                  Resource: !Sub 'arn:aws:bedrock:us-east-1::foundation-model/amazon.titan-embed-image-v1'
+            
+  # Create sample OpenSearch domain
+  OpenSearchDomain:
+    Type: AWS::OpenSearchService::Domain
+    Properties:
+      DomainName: !Ref OpenSearchDomainName
+      DomainEndpointOptions:
+        EnforceHTTPS: true
+      ClusterConfig:
+        InstanceType: 't3.medium.search'
+        InstanceCount: 1
+      EBSOptions:
+        EBSEnabled: true
+        VolumeType: 'gp3'
+        VolumeSize: 100
+      EngineVersion: 'OpenSearch_2.15'
+      AccessPolicies:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Ref NotebookIdentityARN
+            Action: 'es:*'
+            Resource: !Sub 'arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${OpenSearchDomainName}/*'
+
+Outputs:
+
+  OSSAccessBedrockRole:
+    Description: ARN of the IAM role for OSS access to Amazon Bedrock (BEDROCK_ROLE_ARN)
+    Value: !GetAtt OSSAccessBedrockRole.Arn
+
+  OpenSearchDomainEndpoint:
+    Description: Endpoint for the OpenSearch domain (OPENSEARCH_ENDPOINT)
+    Value: !GetAtt OpenSearchDomain.DomainEndpoint
